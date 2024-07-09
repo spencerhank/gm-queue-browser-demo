@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue';
 import { defineStore } from 'pinia'
-import solace, { MessageDeliveryModeType } from 'solclientjs';
+import solace, { MessageDeliveryModeType, QueueDescriptor } from 'solclientjs';
 
 export const useSolaceStore = defineStore('solaceStore', () => {
     let factoryProps = new solace.SolclientFactoryProperties();
@@ -8,6 +8,7 @@ export const useSolaceStore = defineStore('solaceStore', () => {
     solace.SolclientFactory.init(factoryProps);
 
     let sessionUp = ref(false);
+    let messageResults = ref([]);
 
     const solaceClient = {}
     solaceClient.session = null;
@@ -18,7 +19,7 @@ export const useSolaceStore = defineStore('solaceStore', () => {
             if (sessionUp) {
                 startBrowsing()
             } else {
-                disconnect()
+                stopBrowsing()
             }
         }
     )
@@ -52,7 +53,6 @@ export const useSolaceStore = defineStore('solaceStore', () => {
         solaceClient.session.on(solace.SessionEventCode.DISCONNECTED, function (sessionEvent) {
             console.log('Disconnected.');
             sessionUp.value = false;
-            solaceClient.subscribed = false;
             if (solaceClient.session !== null) {
                 solaceClient.session.dispose();
                 solaceClient.session = null;
@@ -71,10 +71,95 @@ export const useSolaceStore = defineStore('solaceStore', () => {
     }
 
     function startBrowsing() {
+        if (!sessionUp.value) {
+            console.log("Session Null. Not Browsing")
+        }
+
+
+        let queueBrowser = solaceClient.session.createQueueBrowser({
+            queueDescriptor: { name: 'Q.DCC.MatMaster.Triage', type: solace.QueueType.QUEUE }
+        });
+
+        queueBrowser.on(solace.QueueBrowserEventName.UP, function () {
+            queueBrowser.connected = true;
+            console.log('=== Ready to receive messages. ===');
+        });
+        queueBrowser.on(solace.QueueBrowserEventName.CONNECT_FAILED_ERROR, function () {
+            queueBrowser.connected = false;
+            console.log('=== Error: the message browser could not bind to queue ===  Ensure this queue exists on the broker vpn');
+            queueBrowser.disconnect()
+        });
+
+        queueBrowser.on(solace.QueueBrowserEventName.DOWN, function () {
+            queueBrowser.consuming = false;
+            console.log('=== The message consumer is now down ===');
+        });
+        queueBrowser.on(solace.QueueBrowserEventName.DOWN_ERROR, function () {
+            queueBrowser.consuming = false;
+            console.log('=== An error happened, the message consumer is down ===');
+        });
+        queueBrowser.on(solace.QueueBrowserEventName.GM_DISABLED, function () {
+            console.log('=== An error happened, the message browser is GM_DISABLED ===');
+        });
+
+        queueBrowser.on(solace.QueueBrowserEventName.MESSAGE, function (message) {
+            console.log(message.dump());
+            messageResults.value.push(message);
+        });
+
+        queueBrowser.connect();
+        queueBrowser.consuming = true;
+        solaceClient.queueBrowser = queueBrowser
+
 
     }
 
+    function stopBrowsing() {
+        if (sessionUp.value) {
+            if (solaceClient.queueBrowser.connected && solaceClient.queueBrowser.consuming) {
+                solaceClient.queueBrowser.consuming = false;
+                console.log("Disconnecting queue browser");
+                try {
+                    solaceClient.queueBrowser.disconnect();
+                } catch (error) {
+                    console.log("Error disconnecting queue browser");
+                }
+            } else {
+                console.log("Can't disconnect browser, not connected")
+            }
+        } else {
+            console.log("Can't disconnected queue. Not connected to Broker")
+        }
+    }
+
+    function deleteMessage(message) {
+        if (sessionUp.value && solaceClient.queueBrowser.connected) {
+            console.log("Deleting message from queue");
+            solaceClient.queueBrowser.removeMessageFromQueue(message);
+            const indexToRemove = messageResults.value.indexOf(message);
+            messageResults.value.splice(indexToRemove, 1);
+
+        } else {
+            console.log("Unable to delete message. Session or Browser not connected");
+        }
+    }
+
+    function disconnect() {
+        if (solaceClient.session !== null) {
+            sessionUp.value = false;
+            try {
+                solaceClient.session.disconnect();
+            } catch (error) {
+                console.log("Error discconnecting: " + error);
+            }
+        }
+    }
+
     return {
-        connectSession
+        connectSession,
+        disconnect,
+        stopBrowsing,
+        deleteMessage,
+        messageResults
     }
 });

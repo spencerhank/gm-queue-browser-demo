@@ -9,27 +9,36 @@
         <v-row>
           <v-col v-for="card in cards" :key="card" cols="12">
             <v-card>
-              <v-list lines="two">
+              <v-list lines="three">
                 <v-list-subheader :title="card"></v-list-subheader>
 
-                <template v-for="n in 6" :key="n">
+                <template
+                  v-for="(n, index) in triageMessages"
+                  :key="n.messageId"
+                >
                   <v-list-item>
                     <template v-slot:prepend>
-                      <v-avatar color="grey-darken-1"></v-avatar>
+                      <v-avatar icon="mdi-exclamation" color="red"></v-avatar>
                     </template>
 
-                    <v-list-item-title
-                      :title="`Message ${n}`"
-                    ></v-list-item-title>
+                    <v-list-item-title :title="n.payload.materialNumber"
+                      >Material Number: {{ n.payload.materialNumber }} (Solace
+                      MessageId: {{ n.messageId }})</v-list-item-title
+                    >
 
-                    <v-list-item-subtitle
-                      title="Lorem ipsum dolor sit amet, consectetur adipisicing elit. Nihil repellendus distinctio similique"
-                    ></v-list-item-subtitle>
+                    <v-list-item-subtitle :title="n.payload"
+                      >{{ n.payload }}<br /><v-btn
+                        @click.prevent="resolveMessage(n)"
+                        class="ma-2"
+                        color="green"
+                        >Mark as Resolved</v-btn
+                      ></v-list-item-subtitle
+                    >
                   </v-list-item>
 
                   <v-divider
-                    v-if="n !== 6"
-                    :key="`divider-${n}`"
+                    v-if="index !== triageMessages.length - 1"
+                    :key="`divider-${index}`"
                     inset
                   ></v-divider>
                 </template>
@@ -43,7 +52,33 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, computed, onBeforeUnmount } from "vue";
+import { useSolaceStore } from "@/store/solace";
+
+const solaceStore = useSolaceStore();
+solaceStore.connectSession();
+
+const triageMessages = computed(() => {
+  let messagePayloads = [];
+  solaceStore.messageResults.forEach((message) => {
+    console.log(JSON.parse(message.getSdtContainer().getValue()));
+    messagePayloads.push({
+      solaceMessage: message,
+      messageId: message.getGuaranteedMessageId(),
+      payload: JSON.parse(message.getSdtContainer().getValue()),
+    });
+  });
+  return messagePayloads;
+});
+
+onBeforeUnmount(() => {
+  solaceStore.disconnect();
+});
+
+function resolveMessage(triageMessage) {
+  console.log("Resolving message: " + triageMessage.messageId);
+  solaceStore.deleteMessage(triageMessage.solaceMessage);
+}
 
 const cards = ["Material"];
 </script>
