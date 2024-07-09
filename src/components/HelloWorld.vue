@@ -80,7 +80,7 @@ function resolveMessage(triageMessage) {
   solaceStore.deleteMessage(triageMessage.solaceMessage);
 }
 
-const cards = ["Material"];
+const cards = ["Material Data Verification Issues"];
 </script>
 
 <script>
