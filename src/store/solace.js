@@ -31,10 +31,10 @@ export const useSolaceStore = defineStore('solaceStore', () => {
 
         try {
             solaceClient.session = solace.SolclientFactory.createSession({
-                url: 'wss://mr-connection-de86rbn9ibm.messaging.solace.cloud:443',
-                vpnName: 'demo2',
+                url: 'wss://mr-connection-cnylcf8s69o.messaging.solace.cloud:443',
+                vpnName: 'hankdemo',
                 userName: 'solace-cloud-client',
-                password: '2it6m3in48cngao9q014faoq8q',
+                password: '',
             });
         } catch (error) {
             console.log(error)
@@ -45,10 +45,23 @@ export const useSolaceStore = defineStore('solaceStore', () => {
             sessionUp.value = true;
         });
 
+        solaceClient.session.on(solace.SessionEventCode.REQUEST_ABORTED, function (sessionEvent) {
+            console.log('Request Aborted')
+        });
+
+        solaceClient.session.on(solace.SessionEventCode.REQUEST_TIMEOUT, function (sessionEvent) {
+            console.log('Request Timeout')
+        });
+
         solaceClient.session.on(solace.SessionEventCode.CONNECT_FAILED_ERROR, function (sessionEvent) {
             console.log('Connection failed to the message router: ' + sessionEvent.infoStr +
                 ' - check correct parameter values and connectivity!');
             sessionUp.value = false;
+        });
+
+        solaceClient.session.on(solace.SessionEventCode.ACKNOWLEDGED_MESSAGE, function (sessionEvent) {
+            console.log('Message Ak\'d');
+
         });
         solaceClient.session.on(solace.SessionEventCode.DISCONNECTED, function (sessionEvent) {
             console.log('Disconnected.');
@@ -77,7 +90,7 @@ export const useSolaceStore = defineStore('solaceStore', () => {
 
 
         let queueBrowser = solaceClient.session.createQueueBrowser({
-            queueDescriptor: { name: 'Q.DCC.MatMaster.Triage', type: solace.QueueType.QUEUE }
+            queueDescriptor: { name: 'Q.DCC.IM.Triage', type: solace.QueueType.QUEUE }
         });
 
         queueBrowser.on(solace.QueueBrowserEventName.UP, function () {
@@ -133,15 +146,26 @@ export const useSolaceStore = defineStore('solaceStore', () => {
     }
 
     function deleteMessage(message) {
-        if (sessionUp.value && solaceClient.queueBrowser.connected) {
-            console.log("Deleting message from queue");
-            solaceClient.queueBrowser.removeMessageFromQueue(message);
-            const indexToRemove = messageResults.value.indexOf(message);
-            messageResults.value.splice(indexToRemove, 1);
+        try {
+            if (sessionUp.value && solaceClient.queueBrowser.connected) {
+                console.log("Deleting message from queue");
+                solaceClient.queueBrowser.removeMessageFromQueue(message);
+                let updatedMessageResults = [];
+                messageResults.value.forEach((m) => {
+                    if (m !== message) {
+                        updatedMessageResults.push(m);
+                    }
+                });
+                // console.log(indexToRemove)
+                messageResults.value = updatedMessageResults;
 
-        } else {
-            console.log("Unable to delete message. Session or Browser not connected");
+            } else {
+                console.log("Unable to delete message. Session or Browser not connected");
+            }
+        } catch (error) {
+            console.log(error);
         }
+
     }
 
     function disconnect() {

@@ -76,8 +76,9 @@ onBeforeUnmount(() => {
 });
 
 function resolveMessage(triageMessage) {
-  console.log("Resolving message: " + triageMessage.messageId);
-  solaceStore.deleteMessage(triageMessage.solaceMessage);
+  console.log("Removing message: " + triageMessage.messageId);
+  const messageToDelete = triageMessage.solaceMessage;
+  solaceStore.deleteMessage(messageToDelete);
 }
 
 const cards = ["Material Data Verification Issues"];
